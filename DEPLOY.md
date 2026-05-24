@@ -25,12 +25,27 @@ No trailing slashes. After changing `VITE_SOCKET_URL`, redeploy the frontend.
 
 ## 3. Frontend — Cloudflare Pages
 
-1. **Workers & Pages** → **Create** → connect GitHub repo.
-2. Root directory: `client`
-3. Build: `npm install && npm run build`
-4. Output: `dist`
-5. Environment variable: `VITE_SOCKET_URL` = your Render URL.
-6. Deploy. Update Render `CLIENT_URL` if needed, then retry frontend build.
+Set **`VITE_SOCKET_URL`** = your Render API URL (no trailing slash) under **Settings → Environment variables** before deploying.
+
+### Option A — Recommended (build inside `client/`)
+
+| Setting | Value |
+|---------|--------|
+| **Root directory** | `client` |
+| **Build command** | `npm install && npm run build` |
+| **Build output directory** | `dist` |
+
+### Option B — Repo root (uses root `package.json`)
+
+| Setting | Value |
+|---------|--------|
+| **Root directory** | `/` (leave empty or `.`) |
+| **Build command** | `npm run build` |
+| **Build output directory** | `client/dist` |
+
+The root `npm run build` runs `npm ci` in `client/` first so Vite and React are installed.
+
+6. Deploy. Set Render `CLIENT_URL` to your `*.pages.dev` URL, then redeploy backend if needed.
 
 ## 4. Local production test
 

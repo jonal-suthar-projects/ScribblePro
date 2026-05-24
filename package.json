@@ -4,12 +4,13 @@
   "private": true,
   "description": "Modern multiplayer drawing & guessing game",
   "scripts": {
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "install:all": "npm install && npm ci --prefix server && npm ci --prefix client",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npm run dev",
-    "dev:client": "cd client && npm run dev",
-    "build": "cd client && npm run build",
-    "start": "cd server && npm start"
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "build": "npm ci --prefix client && npm run build --prefix client",
+    "build:client": "npm ci --prefix client && npm run build --prefix client",
+    "start": "npm start --prefix server"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
