@@ -13,7 +13,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 const fastify = Fastify({
   logger: true,
-  trustProxy: true,
+  trustProxy: true, 
 });
 
 await fastify.register(cors, {
