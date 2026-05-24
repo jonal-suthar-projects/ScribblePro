@@ -1,0 +1,22 @@
+# Render Blueprint — backend only (deploy frontend on Cloudflare Pages)
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: scribblepro-api
+    runtime: node
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: MAX_ROOMS
+        value: 500
+      - key: CLIENT_URL
+        sync: false
+      # Set in Render dashboard after frontend is deployed:
+      # CLIENT_URL=https://your-app.pages.dev

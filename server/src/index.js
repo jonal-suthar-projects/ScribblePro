@@ -4,15 +4,26 @@ import cors from '@fastify/cors';
 import { Server } from 'socket.io';
 import { RoomManager } from './rooms/RoomManager.js';
 import { registerSocketHandlers } from './sockets/handlers.js';
+import { getAllowedOrigins, isOriginAllowed } from './config/corsOrigins.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const allowedOrigins = getAllowedOrigins();
+const isProduction = process.env.NODE_ENV === 'production';
 
-const fastify = Fastify({ logger: true });
+const fastify = Fastify({
+  logger: true,
+  trustProxy: true,
+});
 
 await fastify.register(cors, {
-  origin: [CLIENT_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+  origin: (origin, cb) => {
+    if (isOriginAllowed(origin, allowedOrigins)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Not allowed by CORS'), false);
+    }
+  },
   credentials: true,
 });
 
@@ -51,7 +62,13 @@ await fastify.listen({ port: PORT, host: HOST });
 
 const io = new Server(fastify.server, {
   cors: {
-    origin: [CLIENT_URL, 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      if (isOriginAllowed(origin, allowedOrigins)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -63,12 +80,22 @@ const io = new Server(fastify.server, {
 
 registerSocketHandlers(io, roomManager);
 
-console.log(`
+if (isProduction && !process.env.CLIENT_URL) {
+  console.warn(
+    '[WARN] CLIENT_URL is not set. Set it to your live frontend URL (e.g. https://your-app.pages.dev).'
+  );
+}
+
+if (!isProduction) {
+  console.log(`
   ╔══════════════════════════════════════╗
   ║   ScribblePro Server Running         ║
-  ║   HTTP:  http://${HOST}:${PORT}          ║
-  ║   Socket: ws://${HOST}:${PORT}           ║
+  ║   Port: ${PORT}                            ║
+  ║   CORS: ${allowedOrigins.join(', ')}  ║
   ╚══════════════════════════════════════╝
 `);
+} else {
+  console.log(`ScribblePro server listening on port ${PORT}`);
+}
 
 export { fastify, io, roomManager };
