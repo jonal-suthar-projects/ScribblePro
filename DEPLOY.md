@@ -81,5 +81,6 @@ npm run build && npm run preview
 ## 5. Notes
 
 - Render free tier sleeps after ~15 min idle; first load may take 30–60s.
-- `client/public/_redirects` enables SPA routing on static hosts.
+- Workers SPA routing uses `not_found_handling` in `wrangler.jsonc` (do not add `client/public/_redirects` — it conflicts and breaks deploy).
+- For Cloudflare Pages only, add `public/_redirects` with `/* /index.html 200`.
 - 8–10 players is well within free tier limits.

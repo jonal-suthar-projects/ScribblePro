@@ -26,11 +26,9 @@ if (existsSync(assetsSrc)) {
   cpSync(assetsSrc, assetsDest, { recursive: true });
 }
 
-for (const name of ['favicon.svg', '_redirects']) {
-  const src = join(dist, name);
-  if (existsSync(src)) {
-    cpSync(src, join(client, name));
-  }
+const favicon = join(dist, 'favicon.svg');
+if (existsSync(favicon)) {
+  cpSync(favicon, join(client, 'favicon.svg'));
 }
 
 const indexPath = join(client, 'index.html');
