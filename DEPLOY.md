@@ -32,7 +32,7 @@ Set **`VITE_SOCKET_URL`** = your Render API URL (no trailing slash) under **Sett
 | Setting | Value |
 |---------|--------|
 | **Root directory** | `client` |
-| **Build command** | `npm install && npm run build` |
+| **Build command** | `npm install && npm run build` (use `npm install`, not `npm ci`) |
 | **Build output directory** | `dist` |
 
 ### Option B — Repo root (uses root `package.json`)
