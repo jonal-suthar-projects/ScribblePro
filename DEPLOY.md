@@ -16,7 +16,10 @@ No trailing slashes. After changing `VITE_SOCKET_URL`, redeploy the frontend.
 
 1. Push repo to GitHub.
 2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** (uses `render.yaml`)  
-   **or** **Web Service** → root directory `server`, start `npm start`.
+   **or** **Web Service** with:
+   - **Root directory:** `server`
+   - **Build command:** `npm install && npm run build`
+   - **Start command:** `npm start`
 3. Set `CLIENT_URL` to your live frontend URL.
 4. Verify: `https://YOUR-API.onrender.com/health`
 
