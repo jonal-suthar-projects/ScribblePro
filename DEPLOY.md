@@ -23,12 +23,25 @@ No trailing slashes. After changing `VITE_SOCKET_URL`, redeploy the frontend.
 3. Set `CLIENT_URL` to your live frontend URL.
 4. Verify: `https://YOUR-API.onrender.com/health`
 
-## 3. Frontend — Cloudflare (Pages or Workers)
+## 3. Frontend — Cloudflare Workers (Git builds)
 
-Set **`VITE_SOCKET_URL`** = your Render API URL (no trailing slash) before building.
+Set **`VITE_SOCKET_URL`** in `client/.env.production` (or Cloudflare build env vars).
 
-- **Workers (`wrangler deploy`)**: `client/.env.production` is used by `npm run build`. Root `wrangler.jsonc` must point at **`client/dist`**, not `client/` (serving the dev `index.html` causes a white screen).
-- **Cloudflare Pages**: set `VITE_SOCKET_URL` under **Settings → Environment variables** before deploying.
+### Workers Builds (dashboard → Settings → Builds)
+
+| Setting | Value |
+|---------|--------|
+| **Root directory** | *(empty — repo root)* |
+| **Build command** | `npm run build` |
+| **Deploy command** | `npx wrangler deploy` |
+
+Do **not** add `--assets ./client` to the deploy command; that overrides `wrangler.jsonc` and serves the Vite dev `index.html` (white screen). The build script copies `client/dist` into `client/` so production files are served at `/` even if autoconfig still points assets at `client/`.
+
+`wrangler.jsonc` should use `"directory": "client/dist"` when possible.
+
+### Cloudflare Pages
+
+Set `VITE_SOCKET_URL` under **Settings → Environment variables**, then use Option A below.
 
 ### Option A — Recommended (build inside `client/`)
 

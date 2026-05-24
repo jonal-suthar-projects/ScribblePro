@@ -8,10 +8,11 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
-    "build": "npm install --prefix client && npm run build --prefix client",
-    "build:client": "npm install --prefix client && npm run build --prefix client",
+    "build": "npm install --prefix client && npm run build --prefix client && node scripts/stage-client-for-workers.mjs",
+    "build:client": "npm run build",
     "start": "npm start --prefix server",
-    "deploy": "npm run build:client && wrangler deploy",
+    "deploy": "npm run build && wrangler deploy",
+    "cf:deploy": "wrangler deploy",
     "preview": "wrangler dev"
   },
   "devDependencies": {
