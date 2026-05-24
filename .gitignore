@@ -13,7 +13,6 @@ Thumbs.db
 .idea/
 coverage/
 client/dist/
-client/assets/
 server/.env
 
 # wrangler files
