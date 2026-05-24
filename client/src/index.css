@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply font-body bg-slate-950 text-slate-100 min-h-screen overflow-x-hidden;
+    background-image:
+      radial-gradient(ellipse at 20% 20%, rgba(0, 245, 255, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(255, 0, 170, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 50% 50%, rgba(168, 85, 247, 0.05) 0%, transparent 70%);
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-surface backdrop-blur-xl border border-white/10 shadow-glass rounded-2xl;
+  }
+
+  .glass-card {
+    @apply glass p-4 md:p-6;
+  }
+
+  .btn-primary {
+    @apply relative px-6 py-3 font-display font-semibold uppercase tracking-wider
+           bg-gradient-to-r from-neon-cyan/20 to-neon-pink/20
+           border border-neon-cyan/50 rounded-xl
+           text-neon-cyan hover:shadow-neon hover:border-neon-cyan
+           transition-all duration-300 active:scale-95
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none;
+  }
+
+  .btn-secondary {
+    @apply px-6 py-3 font-display font-semibold uppercase tracking-wider
+           bg-white/5 border border-white/20 rounded-xl
+           hover:bg-white/10 hover:border-white/40
+           transition-all duration-300 active:scale-95;
+  }
+
+  .input-glow {
+    @apply w-full px-4 py-3 bg-slate-900/80 border border-white/10 rounded-xl
+           focus:outline-none focus:border-neon-cyan/50 focus:shadow-neon
+           placeholder:text-slate-500 transition-all duration-300;
+  }
+
+  .neon-text {
+    @apply bg-gradient-to-r from-neon-cyan via-neon-purple to-neon-pink bg-clip-text text-transparent;
+  }
+
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-bottom-input {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-game-shell {
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .mobile-tab-bar {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .touch-manipulation {
+    touch-action: manipulation;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-700 rounded-full;
+}
