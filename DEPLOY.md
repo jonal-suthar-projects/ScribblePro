@@ -33,11 +33,11 @@ Set **`VITE_SOCKET_URL`** in `client/.env.production` (or Cloudflare build env v
 |---------|--------|
 | **Root directory** | *(empty — repo root)* |
 | **Build command** | `npm run build` |
-| **Deploy command** | `npx wrangler deploy` |
+| **Deploy command** | `npm run cf:deploy` |
 
-Do **not** add `--assets ./client` to the deploy command; that overrides `wrangler.jsonc` and serves the Vite dev `index.html` (white screen). The build script copies `client/dist` into `client/` so production files are served at `/` even if autoconfig still points assets at `client/`.
+`cf:deploy` re-runs staging then `wrangler deploy`, so production `index.html` and `/assets/*` are present even if the build cache restored dev files. Do **not** add `--assets ./client` (it overrides `wrangler.jsonc`).
 
-`wrangler.jsonc` should use `"directory": "client/dist"` when possible.
+In the full build log, confirm you see `✓ built` and `[stage-client-for-workers] Staged production assets`.
 
 ### Cloudflare Pages
 

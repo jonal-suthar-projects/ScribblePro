@@ -11,8 +11,8 @@
     "build": "npm install --prefix client && npm run build --prefix client && node scripts/stage-client-for-workers.mjs",
     "build:client": "npm run build",
     "start": "npm start --prefix server",
-    "deploy": "npm run build && wrangler deploy",
-    "cf:deploy": "wrangler deploy",
+    "deploy": "npm run build && npm run cf:deploy",
+    "cf:deploy": "node scripts/stage-client-for-workers.mjs && wrangler deploy",
     "preview": "wrangler dev"
   },
   "devDependencies": {
