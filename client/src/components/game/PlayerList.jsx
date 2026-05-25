@@ -2,12 +2,43 @@ import { motion } from 'framer-motion';
 import { Avatar } from '../ui/Avatar.jsx';
 import { useGame } from '../../context/GameContext.jsx';
 
-export function PlayerList({ onKick, compact = false }) {
+/** skribbl-style narrow vertical player rail (mobile) */
+export function PlayerList({ onKick, compact = false, sidebar = false }) {
   const { room, playerId } = useGame();
   if (!room) return null;
 
   const isHost = room.hostId === playerId;
   const players = [...(room.players || [])].sort((a, b) => b.score - a.score);
+
+  if (sidebar) {
+    return (
+      <div className="flex flex-col h-full min-h-0 w-full bg-slate-900/40 rounded-lg border border-white/10 py-1">
+        {players.map((p, i) => (
+          <div
+            key={p.id}
+            title={p.name}
+            className={`flex flex-col items-center gap-0.5 py-1.5 px-0.5 border-b border-white/5 last:border-0
+              ${p.id === playerId ? 'bg-neon-cyan/10' : ''}`}
+          >
+            <span className="text-[8px] text-slate-500 font-mono leading-none">{i + 1}</span>
+            <Avatar
+              name={p.name}
+              color={p.avatarColor}
+              size="sm"
+              isHost={p.isHost}
+              disconnected={p.disconnected}
+            />
+            <span className="text-[9px] font-display text-neon-cyan leading-none tabular-nums">
+              {p.score}
+            </span>
+            {room.phase === 'lobby' && p.isReady && (
+              <span className="text-[7px] text-neon-green">✓</span>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (compact) {
     return (

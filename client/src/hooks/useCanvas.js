@@ -7,7 +7,6 @@ const CANVAS_BG = '#ffffff';
 
 /**
  * Canvas drawing hook — handles mouse + touch, stroke batching, remote sync, fill.
- * Uses ResizeObserver + scale-correct pointer coords so the full whiteboard is drawable.
  */
 export function useCanvas({
   isDrawer,
@@ -25,6 +24,9 @@ export function useCanvas({
   const currentStrokeRef = useRef(null);
   const sizeRef = useRef({ w: 0, h: 0 });
   const dprRef = useRef(1);
+  const lastLayoutRef = useRef({ w: 0, h: 0 });
+  const strokesRef = useRef(strokes);
+  strokesRef.current = strokes;
 
   const getCtx = useCallback(() => {
     const canvas = canvasRef.current;
@@ -97,21 +99,27 @@ export function useCanvas({
     if (!canvas || !container) return;
 
     const rect = container.getBoundingClientRect();
-    if (rect.width < 1 || rect.height < 1) return;
+    const w = Math.floor(rect.width);
+    const h = Math.floor(rect.height);
+    if (w < 1 || h < 1) return;
+
+    // Prevent ResizeObserver ↔ canvas resize feedback loops
+    if (lastLayoutRef.current.w === w && lastLayoutRef.current.h === h) return;
+    lastLayoutRef.current = { w, h };
 
     const dpr = window.devicePixelRatio || 1;
     dprRef.current = dpr;
-    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
-    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
-    canvas.style.width = `${rect.width}px`;
-    canvas.style.height = `${rect.height}px`;
+    canvas.width = Math.max(1, Math.floor(w * dpr));
+    canvas.height = Math.max(1, Math.floor(h * dpr));
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
 
     const ctx = canvas.getContext('2d');
     ctxRef.current = ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    sizeRef.current = { w: rect.width, h: rect.height };
-    redrawAll(strokes);
-  }, [strokes, redrawAll, containerRef]);
+    sizeRef.current = { w, h };
+    redrawAll(strokesRef.current);
+  }, [containerRef, redrawAll]);
 
   useEffect(() => {
     if (drawingRef.current) return;
@@ -124,7 +132,9 @@ export function useCanvas({
     const container = containerRef?.current || canvasRef.current?.parentElement;
     const ro =
       container && typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => resizeCanvas())
+        ? new ResizeObserver(() => {
+            requestAnimationFrame(resizeCanvas);
+          })
         : null;
     if (ro && container) ro.observe(container);
 

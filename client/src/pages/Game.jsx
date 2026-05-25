@@ -9,7 +9,6 @@ import { WordSelect } from '../components/game/WordSelect.jsx';
 import { Leaderboard } from '../components/game/Leaderboard.jsx';
 import { WinnerCelebration } from '../components/game/WinnerCelebration.jsx';
 import { ReactionOverlay } from '../components/game/ReactionOverlay.jsx';
-import { MobileGameTabs } from '../components/game/MobileGameTabs.jsx';
 import { Modal } from '../components/ui/Modal.jsx';
 import { Button } from '../components/ui/Button.jsx';
 import { useGame } from '../context/GameContext.jsx';
@@ -41,24 +40,8 @@ export function Game() {
   const { playCorrect, playTick } = useSound();
   const [showRoundModal, setShowRoundModal] = useState(false);
   const [showWinner, setShowWinner] = useState(false);
-  const [mobileTab, setMobileTab] = useState('play');
 
   const activeCode = roomCode || code;
-  const mobileTabs = isDrawer
-    ? [
-        { id: 'draw', label: 'Draw', icon: '✏️' },
-        { id: 'scores', label: 'Scores', icon: '🏆' },
-      ]
-    : [
-        { id: 'play', label: 'Play', icon: '🎨' },
-        { id: 'scores', label: 'Scores', icon: '🏆' },
-      ];
-
-  // Drawer vs guesser use different tab ids on mobile
-  useEffect(() => {
-    if (!isMobile) return;
-    setMobileTab(isDrawer ? 'draw' : 'play');
-  }, [isMobile, isDrawer, room?.currentDrawerId]);
 
   useEffect(() => {
     if (!room && code) {
@@ -91,13 +74,10 @@ export function Game() {
 
   useEffect(() => {
     const socket = getSocket();
-    const onCorrect = () => {
-      playCorrect();
-      if (isMobile && !isDrawer) setMobileTab('play');
-    };
+    const onCorrect = () => playCorrect();
     socket.on(SOCKET_EVENTS.CORRECT_GUESS, onCorrect);
     return () => socket.off(SOCKET_EVENTS.CORRECT_GUESS, onCorrect);
-  }, [playCorrect, isMobile]);
+  }, [playCorrect]);
 
   useEffect(() => {
     if (!isScribbleTimerType(timer.type)) return;
@@ -119,7 +99,7 @@ export function Game() {
   }
 
   const canvasBlock = (
-    <div className="relative h-full min-h-0">
+    <div className="relative flex-1 min-h-0 flex flex-col">
       <DrawingCanvas compact={isMobile} fillHeight={isMobile} />
       {isDrawer &&
         !isFriendVoteRoom(room) &&
@@ -135,7 +115,11 @@ export function Game() {
   );
 
   return (
-    <div className={`flex flex-col ${isMobile ? 'mobile-game-shell' : 'min-h-screen'}`}>
+    <div
+      className={`flex flex-col overflow-hidden ${
+        isMobile ? 'mobile-game-shell' : 'min-h-screen max-h-screen h-screen'
+      }`}
+    >
       <Navbar compact={isMobile} />
       <ReactionOverlay reactions={reactions} />
 
@@ -144,53 +128,38 @@ export function Game() {
       )}
 
       <main
-        className={`flex-1 flex flex-col min-h-0 w-full max-w-7xl mx-auto
-          ${isMobile ? 'px-1.5 pt-0.5 pb-[calc(52px+env(safe-area-inset-bottom))] gap-1' : 'p-2 md:p-4 gap-3'}`}
+        className={`flex-1 flex flex-col min-h-0 w-full max-w-7xl mx-auto overflow-hidden
+          ${isMobile ? 'px-1 pt-0.5 gap-1' : 'p-2 md:p-3 gap-2'}`}
       >
-        <GameHeader compact={isMobile} />
+        <div className="shrink-0">
+          <GameHeader compact={isMobile} />
+        </div>
 
         {isMobile ? (
-          <div className="flex-1 min-h-0 flex flex-col">
-            {mobileTab === 'scores' ? (
-              <div className="flex-1 min-h-0 glass-card p-2" role="tabpanel">
-                <PlayerList compact />
-              </div>
-            ) : isDrawer ? (
-              <div className="flex-1 min-h-0 flex flex-col" role="tabpanel">
-                {canvasBlock}
-              </div>
-            ) : (
-              <div className="flex-1 min-h-0 flex flex-col gap-1.5" role="tabpanel">
-                <div className="flex-[1.2] min-h-0 flex flex-col">
-                  {canvasBlock}
-                </div>
-                <div className="flex-1 min-h-[120px] max-h-[42%] flex flex-col">
-                  <ChatPanel fullHeight mobile />
-                </div>
-              </div>
-            )}
+          /* skribbl.io-style mobile: canvas + player rail, chat always at bottom (drawer + guessers) */
+          <div className="flex-1 min-h-0 flex flex-col gap-1 overflow-hidden">
+            <div className="flex-1 min-h-0 flex flex-row gap-1 overflow-hidden">
+              <div className="flex-1 min-w-0 min-h-0 flex flex-col">{canvasBlock}</div>
+              <aside className="w-[52px] shrink-0 min-h-0 overflow-hidden">
+                <PlayerList sidebar />
+              </aside>
+            </div>
+            <div className="shrink-0 h-[min(34dvh,200px)] min-h-[112px] max-h-[200px]">
+              <ChatPanel fullHeight mobile />
+            </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px_220px] gap-3 flex-1 min-h-0 mt-3">
-            <div className="relative min-h-[400px] lg:min-h-[480px]">{canvasBlock}</div>
-            <div className="min-h-[320px] lg:min-h-0">
+          <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[1fr_280px_200px] gap-3 overflow-hidden">
+            <div className="min-h-0 overflow-hidden flex flex-col">{canvasBlock}</div>
+            <div className="min-h-0 overflow-hidden">
               <ChatPanel fullHeight />
             </div>
-            <div className="hidden lg:block">
+            <div className="hidden lg:block min-h-0 overflow-y-auto">
               <PlayerList />
             </div>
           </div>
         )}
       </main>
-
-      {isMobile && (
-        <MobileGameTabs
-          active={mobileTab}
-          onChange={setMobileTab}
-          tabs={mobileTabs}
-          chatBadge={room.phase === 'drawing' && !hasGuessed && !isDrawer ? 1 : 0}
-        />
-      )}
 
       <Modal open={showRoundModal} onClose={() => setShowRoundModal(false)} title="Round Over">
         {roundEnd?.leaderboard && (

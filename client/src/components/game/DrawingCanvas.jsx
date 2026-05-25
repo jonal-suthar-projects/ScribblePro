@@ -28,7 +28,6 @@ export function DrawingCanvas({ compact = false, fillHeight = false }) {
     if (!canvas || !isDrawer) return;
 
     const preventScroll = (e) => e.preventDefault();
-
     canvas.addEventListener('touchstart', preventScroll, { passive: false });
     canvas.addEventListener('touchmove', preventScroll, { passive: false });
 
@@ -38,9 +37,17 @@ export function DrawingCanvas({ compact = false, fillHeight = false }) {
     };
   }, [canvasRef, isDrawer]);
 
+  const boardClass = fillHeight
+    ? 'relative w-full flex-1 min-h-0 rounded-xl overflow-hidden border border-white/20 bg-white touch-none'
+    : 'relative w-full rounded-xl overflow-hidden border border-white/20 bg-white touch-none max-h-[min(52vh,500px)]';
+
+  const boardStyle = fillHeight
+    ? undefined
+    : { aspectRatio: CANVAS_ASPECT, width: '100%', height: 'auto' };
+
   return (
     <div
-      className={`flex flex-col gap-1.5 min-h-0 ${fillHeight ? 'h-full' : 'h-full'}`}
+      className={`flex flex-col min-h-0 gap-1.5 ${fillHeight ? 'h-full flex-1' : 'shrink-0'}`}
     >
       {isDrawer && (
         <DrawingToolbar
@@ -57,13 +64,7 @@ export function DrawingCanvas({ compact = false, fillHeight = false }) {
           compact={compact}
         />
       )}
-      {/* Single board container — canvas fills it exactly (no letterbox dead zones) */}
-      <div
-        ref={boardRef}
-        className={`relative w-full rounded-xl overflow-hidden border border-white/20 bg-white touch-none
-          ${fillHeight ? 'flex-1 min-h-[160px]' : 'min-h-[200px] lg:min-h-[400px]'}`}
-        style={{ aspectRatio: fillHeight ? undefined : CANVAS_ASPECT }}
-      >
+      <div ref={boardRef} className={boardClass} style={boardStyle}>
         <canvas
           ref={canvasRef}
           className="block w-full h-full touch-none select-none"
@@ -87,10 +88,10 @@ export function DrawingCanvas({ compact = false, fillHeight = false }) {
             </span>
           </div>
         )}
-        {!isDrawer && (
+        {!isDrawer && !compact && (
           <div className="absolute inset-0 pointer-events-none flex items-end justify-center pb-1 z-10">
             <span className="text-slate-600 text-[10px] px-2 text-center bg-white/85 rounded py-1 shadow max-w-[92%]">
-              Watch the drawing — guess in chat
+              Guess in the chat below
             </span>
           </div>
         )}
