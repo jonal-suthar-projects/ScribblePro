@@ -11,7 +11,7 @@ Stack: **Cloudflare Pages** (frontend) + **Render** (backend + Socket.IO).
 | `CLIENT_URLS` | Render (optional) | `https://preview.pages.dev` |
 | `REDIS_URL` | Render (recommended) | Upstash **Redis URL** (`rediss://…`) |
 
-`REDIS_URL` keeps rooms and sessions alive across Render restarts and enables reliable reconnects. Without it, the server falls back to in-memory state (fine for local dev only).
+`REDIS_URL` keeps rooms and sessions alive across Render restarts. Use Upstash’s **Redis URL** (`rediss://…`), **not** the REST `https://` URL. Wrong URL no longer crashes the server — it falls back to in-memory — but persistence won’t work until the URL is fixed.
 
 No trailing slashes. After changing `VITE_SOCKET_URL`, redeploy the frontend.
 

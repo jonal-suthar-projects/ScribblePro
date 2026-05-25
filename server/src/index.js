@@ -8,7 +8,7 @@ import { SessionStore } from './state/sessionStore.js';
 import { GameStateManager } from './transitions/GameStateManager.js';
 import { registerSocketHandlers } from './sockets/handlers.js';
 import { getAllowedOrigins, isOriginAllowed } from './config/corsOrigins.js';
-import { getRedisClient, isRedisEnabled, closeRedis } from './services/redis.js';
+import { initRedis, isRedisEnabled, getRedisStatus, closeRedis } from './services/redis.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
@@ -40,17 +40,7 @@ await fastify.register(cors, {
   credentials: true,
 });
 
-if (isRedisEnabled()) {
-  try {
-    await getRedisClient();
-  } catch (err) {
-    console.error('[Startup] Redis unavailable:', err.message);
-  }
-} else {
-  console.warn(
-    '[Startup] REDIS_URL not set — room state is in-memory only (lost on restart).'
-  );
-}
+await initRedis();
 
 const hydrated = await roomManager.hydrateFromStore();
 if (hydrated > 0) {
@@ -60,7 +50,7 @@ if (hydrated > 0) {
 fastify.get('/health', async () => ({
   status: 'ok',
   rooms: roomManager.rooms.size,
-  redis: isRedisEnabled(),
+  redis: getRedisStatus(),
   uptime: process.uptime(),
 }));
 
