@@ -45,7 +45,8 @@ export function getShareLink(roomCode, gameType = 'scribble') {
   const gt = String(gameType).toLowerCase().replace(/[-_\s]/g, '');
   const mode =
     gt === 'friendvote' || gt === 'fv' || gt === 'vote' ? 'friendVote' : 'scribble';
-  return `${base}/join/${roomCode}?game=${mode}`;
+  // fresh=1 ensures joiners don't reuse the host's browser session (second tab fix)
+  return `${base}/join/${roomCode}?game=${mode}&fresh=1`;
 }
 
 const API_BASE = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001';

@@ -18,7 +18,7 @@ export class GameStateManager {
 
   async withRoom(roomCode, fn, { actionId, persist = true } = {}) {
     return this.lock.run(roomCode, async () => {
-      const room = await this.roomManager.getOrLoadRoom(roomCode);
+      const room = await this.roomManager.getOrLoadRoom(roomCode, { preferStore: true });
       if (!room) {
         return { ok: false, error: 'Room not found' };
       }

@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { Home } from './pages/Home.jsx';
 import { Lobby } from './pages/Lobby.jsx';
 import { Game } from './pages/Game.jsx';
@@ -26,8 +26,11 @@ function AppRoutes() {
 
 function JoinRedirect() {
   const { code } = useParams();
+  const [searchParams] = useSearchParams();
   const upper = code?.toUpperCase();
-  return <Navigate to={upper ? `/lobby/${upper}` : '/'} replace />;
+  const qs = searchParams.toString();
+  const dest = upper ? `/lobby/${upper}${qs ? `?${qs}` : ''}` : '/';
+  return <Navigate to={dest} replace />;
 }
 
 export default function App() {

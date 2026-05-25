@@ -6,7 +6,8 @@ import { normalizeStroke, strokeToPixels } from '../utils/canvasCoords.js';
 const CANVAS_BG = '#ffffff';
 
 /**
- * Canvas drawing hook — handles mouse + touch, stroke batching, remote sync, fill
+ * Canvas drawing hook — handles mouse + touch, stroke batching, remote sync, fill.
+ * Uses ResizeObserver + scale-correct pointer coords so the full whiteboard is drawable.
  */
 export function useCanvas({
   isDrawer,
@@ -16,6 +17,7 @@ export function useCanvas({
   brushSize = 4,
   isEraser = false,
   isFillMode = false,
+  containerRef = null,
 }) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
@@ -91,21 +93,25 @@ export function useCanvas({
 
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-    const rect = parent.getBoundingClientRect();
+    const container = containerRef?.current || canvas?.parentElement;
+    if (!canvas || !container) return;
+
+    const rect = container.getBoundingClientRect();
+    if (rect.width < 1 || rect.height < 1) return;
+
     const dpr = window.devicePixelRatio || 1;
     dprRef.current = dpr;
     canvas.width = Math.max(1, Math.floor(rect.width * dpr));
     canvas.height = Math.max(1, Math.floor(rect.height * dpr));
     canvas.style.width = `${rect.width}px`;
     canvas.style.height = `${rect.height}px`;
+
     const ctx = canvas.getContext('2d');
     ctxRef.current = ctx;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     sizeRef.current = { w: rect.width, h: rect.height };
     redrawAll(strokes);
-  }, [strokes, redrawAll]);
+  }, [strokes, redrawAll, containerRef]);
 
   useEffect(() => {
     if (drawingRef.current) return;
@@ -115,15 +121,36 @@ export function useCanvas({
   useEffect(() => {
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, [resizeCanvas]);
+    const container = containerRef?.current || canvasRef.current?.parentElement;
+    const ro =
+      container && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => resizeCanvas())
+        : null;
+    if (ro && container) ro.observe(container);
+
+    return () => {
+      window.removeEventListener('resize', resizeCanvas);
+      ro?.disconnect();
+    };
+  }, [resizeCanvas, containerRef]);
 
   const getPos = (e) => {
     const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+
     const rect = canvas.getBoundingClientRect();
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return { x: clientX - rect.left, y: clientY - rect.top };
+
+    const logicalW = sizeRef.current.w || rect.width;
+    const logicalH = sizeRef.current.h || rect.height;
+    const scaleX = rect.width > 0 ? logicalW / rect.width : 1;
+    const scaleY = rect.height > 0 ? logicalH / rect.height : 1;
+
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
   };
 
   const emitDraw = useRef(

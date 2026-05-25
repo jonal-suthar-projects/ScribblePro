@@ -7,7 +7,8 @@ import { EngineRegistry } from '../socket/engineRegistry.js';
 import { consumeActionId } from '../utils/idempotency.js';
 import { getActiveParticipant, requireHost } from '../validators/playerValidator.js';
 import { canHostStartGame } from '../validators/phaseValidator.js';
-import { logReconnect, logDisconnect } from '../utils/logger.js';
+import { logReconnect, logDisconnect, logJoin, logRoom } from '../utils/logger.js';
+import { broadcastAuthoritativeRoom } from '../socket/broadcast.js';
 
 function isScribbleRoom(room) {
   return resolveGameType(room) === GAME_TYPES.SCRIBBLE;
@@ -55,6 +56,8 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
 
         socket.join(room.code);
         getEngine(room);
+        logJoin(room.code, player.id, player.name, false);
+        logRoom('create', room.code, `players=1 socket=${socket.id}`);
 
         const payload = {
           success: true,
@@ -63,6 +66,7 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
           sessionToken: player.sessionToken,
           room: room.toPublicState(player.id),
           serverTime: Date.now(),
+          stateVersion: room.stateVersion ?? 0,
         };
         callback?.(payload);
         socket.emit(SOCKET_EVENTS.ROOM_CREATED, {
@@ -139,17 +143,17 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
 
           if (result?.ok && result.reconnected) {
             socket.join(lookupCode);
-            const room = await roomManager.getOrLoadRoom(lookupCode);
-            const engine = getEngine(room);
+            const room = await roomManager.getOrLoadRoom(lookupCode, { preferStore: true });
             logReconnect(lookupCode, result.playerId);
             callback?.({ success: true, ...result });
             io.to(lookupCode).emit(SOCKET_EVENTS.PLAYER_RECONNECTED, {
               playerId: result.playerId,
-              name: room.getPlayerById(result.playerId)?.name,
+              name: room?.getPlayerById(result.playerId)?.name,
             });
-            engine.broadcastState();
-            if (room.timer) {
-              engine.broadcastTimer?.();
+            await broadcastAuthoritativeRoom(io, roomManager, engines, lookupCode);
+            const engine = engines.getIfExists(lookupCode);
+            if (room?.timer && engine?.broadcastTimer) {
+              engine.broadcastTimer();
             }
             return;
           }
@@ -198,18 +202,21 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
         }
 
         socket.join(code);
-        getEngine(await roomManager.getOrLoadRoom(code));
+
+        const joinedRoom = await roomManager.getOrLoadRoom(code, { preferStore: true });
+        const joinedPlayer = joinedRoom?.getPlayerById(joinResult.playerId);
+        logJoin(code, joinResult.playerId, joinedPlayer?.name || playerName, false);
+
+        getEngine(joinedRoom);
 
         callback?.({
           success: true,
           playerId: joinResult.playerId,
           sessionToken: joinResult.sessionToken,
-          room: joinResult.room,
+          room: joinedRoom?.toPublicState(joinResult.playerId) ?? joinResult.room,
           serverTime: Date.now(),
+          stateVersion: joinedRoom?.stateVersion ?? 0,
         });
-
-        const joinedRoom = await roomManager.getOrLoadRoom(code);
-        const joinedPlayer = joinedRoom?.getPlayerById(joinResult.playerId);
 
         io.to(code).emit(SOCKET_EVENTS.ROOM_JOINED, {
           player: {
@@ -220,7 +227,7 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
           },
         });
 
-        getEngine(joinedRoom).broadcastState();
+        await broadcastAuthoritativeRoom(io, roomManager, engines, code);
       } catch (err) {
         callback?.({ success: false, error: err.message });
       }
@@ -239,7 +246,7 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
         const check = getActiveParticipant(room, socket.id);
         if (!check.ok || check.player.isSpectator) return;
         room.setReady(check.player.id, data?.ready ?? true);
-        getEngine(room).broadcastState();
+        await broadcastAuthoritativeRoom(io, roomManager, engines, room.code);
       });
     });
 
@@ -289,7 +296,7 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
         if (!hostCheck.ok) return;
         if (room.phase !== GAME_PHASES.LOBBY) return;
         room.settings = { ...room.settings, ...data.settings, gameType: room.gameType };
-        getEngine(room).broadcastState();
+        await broadcastAuthoritativeRoom(io, roomManager, engines, room.code);
       });
     });
 
@@ -314,7 +321,7 @@ export function registerSocketHandlers(io, roomManager, stateManager) {
           await stateManager.sessionStore.deleteSession(target.sessionToken);
         }
         room.players.delete(target.id);
-        getEngine(room).broadcastState();
+        await broadcastAuthoritativeRoom(io, roomManager, engines, room.code);
       });
     });
 
@@ -531,7 +538,7 @@ function handleDisconnect(socket, roomManager, io, engines, stateManager, isDisc
           playerId: player.id,
           name: player.name,
         });
-        engines.get(room, io)?.broadcastState();
+        await broadcastAuthoritativeRoom(io, roomManager, engines, room.code);
 
         stateManager.scheduleDisconnectCleanup(room.code, player.id, async (r, p) => {
           await stateManager.withRoom(r.code, async (lockedRoom) => {
@@ -556,7 +563,7 @@ function handleDisconnect(socket, roomManager, io, engines, stateManager, isDisc
               engines.remove(lockedRoom.code);
               await roomManager.deleteRoom(lockedRoom.code);
             } else {
-              engines.get(lockedRoom, io)?.broadcastState();
+              await broadcastAuthoritativeRoom(io, roomManager, engines, lockedRoom.code);
             }
           });
         });
@@ -580,7 +587,7 @@ function handleDisconnect(socket, roomManager, io, engines, stateManager, isDisc
           engines.remove(room.code);
           await roomManager.deleteRoom(room.code);
         } else {
-          engines.get(room, io)?.broadcastState();
+          await broadcastAuthoritativeRoom(io, roomManager, engines, room.code);
         }
       }
 

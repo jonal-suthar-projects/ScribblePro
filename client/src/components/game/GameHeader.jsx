@@ -8,25 +8,30 @@ export function GameHeader({ compact = false }) {
 
   if (compact) {
     return (
-      <div className="glass rounded-xl px-3 py-2 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] uppercase tracking-wider text-slate-500">
+      <div className="glass rounded-lg px-2 py-1.5 shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 leading-tight">
+            <p className="text-[9px] uppercase tracking-wide text-slate-500 truncate">
               R{room?.currentRound}/{room?.totalRounds}
               {turnInfo && (
                 <>
                   {' · '}
-                  <span className="text-neon-cyan">{turnInfo.drawerName}</span> draws
+                  <span className="text-neon-cyan">{turnInfo.drawerName}</span>
                 </>
               )}
             </p>
+            {room?.phase === 'drawing' && (
+              <p className="text-[9px] text-slate-500">
+                {room.guessedCount}/{room.totalGuessers} guessed
+              </p>
+            )}
           </div>
-          <div className="shrink-0 scale-75 origin-right">
+          <div className="shrink-0 scale-[0.65] origin-right -my-1">
             <Timer remaining={timer.remaining} total={timer.total} type={timer.type} />
           </div>
         </div>
         {wordDisplay && (
-          <div className="font-display text-base tracking-[0.15em] text-center break-all leading-relaxed">
+          <div className="font-display text-sm tracking-[0.12em] text-center break-all leading-snug mt-1">
             {typeof wordDisplay === 'string'
               ? wordDisplay.split('').map((c, i) => (
                   <span key={i} className={c === '_' ? 'text-slate-600' : 'text-neon-cyan'}>
@@ -35,11 +40,6 @@ export function GameHeader({ compact = false }) {
                 ))
               : null}
           </div>
-        )}
-        {room?.phase === 'drawing' && (
-          <p className="text-[10px] text-slate-500 text-center">
-            {room.guessedCount}/{room.totalGuessers} guessed
-          </p>
         )}
       </div>
     );

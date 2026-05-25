@@ -19,20 +19,40 @@ export class RoomManager {
     this.rooms.set(room.code, room);
   }
 
-  async getOrLoadRoom(code) {
+  /**
+   * Load room — Redis/store wins when its stateVersion is newer than the memory cache.
+   * Prevents stale in-memory copies from hiding players who joined on another socket.
+   */
+  async getOrLoadRoom(code, { preferStore = false } = {}) {
     const upper = code?.toUpperCase()?.trim();
     if (!upper) return null;
 
-    if (this.rooms.has(upper)) {
-      return this.rooms.get(upper);
+    const cached = this.rooms.get(upper) || null;
+    const fromStore = await this.roomStore.getRoom(upper);
+
+    if (!fromStore) {
+      return cached;
     }
 
-    const fromStore = await this.roomStore.getRoom(upper);
-    if (fromStore) {
+    if (!cached || preferStore) {
       this.rooms.set(upper, fromStore);
       return fromStore;
     }
-    return null;
+
+    const cachedV = cached.stateVersion ?? 0;
+    const storeV = fromStore.stateVersion ?? 0;
+
+    if (storeV >= cachedV) {
+      this.rooms.set(upper, fromStore);
+      return fromStore;
+    }
+
+    return cached;
+  }
+
+  invalidateRoom(code) {
+    const upper = code?.toUpperCase()?.trim();
+    if (upper) this.rooms.delete(upper);
   }
 
   getRoom(code) {

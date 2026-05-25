@@ -2,15 +2,60 @@ import { motion } from 'framer-motion';
 import { Avatar } from '../ui/Avatar.jsx';
 import { useGame } from '../../context/GameContext.jsx';
 
-export function PlayerList({ onKick }) {
+export function PlayerList({ onKick, compact = false }) {
   const { room, playerId } = useGame();
   if (!room) return null;
 
   const isHost = room.hostId === playerId;
   const players = [...(room.players || [])].sort((a, b) => b.score - a.score);
 
+  if (compact) {
+    return (
+      <div className="flex flex-col h-full min-h-0">
+        <h3 className="font-display text-[10px] uppercase tracking-widest text-slate-500 mb-2 shrink-0">
+          Players · {players.length}
+        </h3>
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-1.5 overscroll-contain">
+          {players.map((p, i) => (
+            <div
+              key={p.id}
+              className={`flex items-center gap-2 px-2 py-1.5 rounded-lg
+                ${p.id === playerId ? 'bg-neon-cyan/10 ring-1 ring-neon-cyan/30' : 'bg-white/5'}`}
+            >
+              <span className="text-[10px] text-slate-500 w-3 tabular-nums">{i + 1}</span>
+              <Avatar
+                name={p.name}
+                color={p.avatarColor}
+                size="sm"
+                isHost={p.isHost}
+                disconnected={p.disconnected}
+              />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{p.name}</p>
+                {p.isReady && room.phase === 'lobby' && (
+                  <span className="text-[9px] text-neon-green">Ready</span>
+                )}
+              </div>
+              <span className="font-display text-neon-cyan text-xs tabular-nums">{p.score}</span>
+              {isHost && !p.isHost && onKick && (
+                <button
+                  type="button"
+                  onClick={() => onKick(p.id)}
+                  className="text-[10px] text-red-400 px-1 touch-manipulation"
+                  aria-label={`Kick ${p.name}`}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="glass rounded-xl p-3 space-y-2">
+    <div className="glass rounded-xl p-3 space-y-2 h-full">
       <h3 className="font-display text-xs uppercase tracking-widest text-slate-500 mb-2">
         Players ({players.length})
       </h3>
@@ -37,6 +82,7 @@ export function PlayerList({ onKick }) {
           <span className="font-display text-neon-cyan text-sm">{p.score}</span>
           {isHost && !p.isHost && onKick && (
             <button
+              type="button"
               onClick={() => onKick(p.id)}
               className="text-xs text-red-400 hover:text-red-300 px-1"
               title="Kick"

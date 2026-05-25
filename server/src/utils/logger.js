@@ -25,3 +25,13 @@ export function logTransitionFail(roomCode, action, reason) {
 export function logTimer(roomCode, type, remaining) {
   console.log(`${PREFIX} [Room:${roomCode}] Timer ${type} remaining=${remaining}s`);
 }
+
+export function logJoin(roomCode, playerId, name, isReconnect = false) {
+  console.log(
+    `${PREFIX} [Room:${roomCode}] ${isReconnect ? 'Reconnect' : 'Join'} player=${playerId} name=${name}`
+  );
+}
+
+export function logRedis(op, roomCode, detail = '') {
+  console.log(`${PREFIX} [Redis] ${op} room=${roomCode}${detail ? ` — ${detail}` : ''}`);
+}

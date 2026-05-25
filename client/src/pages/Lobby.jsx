@@ -9,8 +9,13 @@ import { RoomSettings } from '../components/lobby/RoomSettings.jsx';
 import { FriendVoteSettings } from '../components/lobby/FriendVoteSettings.jsx';
 import { gamePathForRoom, isFriendVoteRoom } from '../utils/gameType.js';
 import { useGame } from '../context/GameContext.jsx';
-import { copyToClipboard, getShareLink } from '../utils/helpers.js';
-import { getStoredName, getStoredAvatar } from '../utils/helpers.js';
+import {
+  copyToClipboard,
+  getShareLink,
+  getStoredName,
+  getStoredAvatar,
+  getSession,
+} from '../utils/helpers.js';
 import { SOCKET_EVENTS } from '../utils/constants.js';
 import { getSocket } from '../socket/socket.js';
 
@@ -58,7 +63,14 @@ export function Lobby() {
     setJoining(true);
     setJoinError('');
 
-    joinRoom(code, name, getStoredAvatar())
+    const session = getSession();
+    const forceFresh = new URLSearchParams(window.location.search).get('fresh') === '1';
+    const isReconnect =
+      !forceFresh &&
+      session?.roomCode === code?.toUpperCase() &&
+      Boolean(session?.sessionToken);
+
+    joinRoom(code, name, getStoredAvatar(), false, { reconnect: isReconnect })
       .catch((err) => {
         joinAttempted.current = false;
         setJoinError(err.message || 'Could not join room');
@@ -158,17 +170,22 @@ export function Lobby() {
       <Navbar compact={isMobile} />
       <main
         className={`flex-1 max-w-5xl mx-auto w-full
-          ${isMobile ? 'p-3 pb-28 overflow-y-auto' : 'p-4 md:p-8'}`}
+          ${isMobile ? 'px-2 pt-1 pb-24 overflow-y-auto' : 'p-4 md:p-8'}`}
       >
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="space-y-6"
+          className={isMobile ? 'space-y-3' : 'space-y-6'}
         >
-          <div className="glass-card text-center">
-            <p className="text-xs uppercase tracking-widest text-slate-500 mb-2">Room Code</p>
-            <div className="flex items-center justify-center gap-3 flex-wrap">
-              <span className="font-display text-3xl sm:text-4xl md:text-5xl tracking-[0.2em] sm:tracking-[0.4em] neon-text break-all">
+          <div className={`glass-card text-center ${isMobile ? 'py-3 px-2' : ''}`}>
+            <p className={`uppercase tracking-widest text-slate-500 mb-1 ${isMobile ? 'text-[10px]' : 'text-xs mb-2'}`}>
+              Room Code
+            </p>
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <span
+                className={`font-display neon-text break-all tracking-[0.15em]
+                  ${isMobile ? 'text-2xl' : 'text-3xl sm:text-4xl md:text-5xl sm:tracking-[0.4em]'}`}
+              >
                 {activeCode}
               </span>
               <div className="flex gap-2 w-full sm:w-auto justify-center">

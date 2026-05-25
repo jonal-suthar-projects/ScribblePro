@@ -1,5 +1,6 @@
 import { redisGet, redisSet, redisDel, redisKeys, isRedisEnabled } from '../services/redis.js';
 import { roomToSnapshot, snapshotToRoom } from './roomSerializer.js';
+import { logRedis } from '../utils/logger.js';
 
 const ROOM_PREFIX = 'room:';
 const ROOM_INDEX_KEY = 'rooms:active';
@@ -25,7 +26,9 @@ export class RoomStore {
       const raw = await redisGet(roomKey(code));
       if (!raw) return null;
       try {
-        return snapshotToRoom(JSON.parse(raw));
+        const room = snapshotToRoom(JSON.parse(raw));
+        logRedis('load', code, `players=${room.players.size} v=${room.stateVersion ?? 0}`);
+        return room;
       } catch (err) {
         console.error(`[RoomStore] Parse failed for ${code}:`, err.message);
         return null;
@@ -47,10 +50,12 @@ export class RoomStore {
     if (isRedisEnabled()) {
       await redisSet(roomKey(code), payload, { EX: ttl });
       await redisSet(`${ROOM_INDEX_KEY}:${code}`, '1', { EX: ttl });
+      logRedis('save', code, `players=${room.players.size} v=${snapshot.stateVersion ?? 0}`);
       return true;
     }
 
     memoryFallback.set(code, snapshot);
+    logRedis('save(memory)', code, `players=${room.players.size}`);
     return true;
   }
 

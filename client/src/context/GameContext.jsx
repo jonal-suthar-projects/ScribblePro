@@ -168,6 +168,7 @@ export function GameProvider({ children }) {
     socket.on('disconnect', () => dispatch({ type: 'SET_CONNECTED', payload: false }));
 
     socket.on(SOCKET_EVENTS.ROOM_UPDATED, ({ room }) => {
+      if (!room) return;
       dispatch({ type: 'UPDATE_ROOM', payload: room });
       if (room?.phase === 'lobby') {
         dispatch({ type: 'SET_TIMER', payload: emptyTimer });
@@ -372,10 +373,21 @@ export function GameProvider({ children }) {
     }
   };
 
-  const joinRoom = async (roomCode, playerName, avatarColor, asSpectator = false) => {
+  /**
+   * @param {object} [options]
+   * @param {boolean} [options.reconnect] - true only when restoring same player after refresh
+   */
+  const joinRoom = async (roomCode, playerName, avatarColor, asSpectator = false, options = {}) => {
+    const { reconnect = false } = options;
     dispatch({ type: 'CLEAR_SESSION' });
     dispatch({ type: 'SET_LOADING', payload: true });
-    const session = getSession();
+
+    // New joins must not reuse host session (fixes second tab / share-link showing count=1)
+    if (!reconnect) {
+      clearSession();
+    }
+    const session = reconnect ? getSession() : null;
+
     try {
       connectSocket();
       await waitForSocket();
@@ -384,7 +396,10 @@ export function GameProvider({ children }) {
         playerName,
         avatarColor,
         asSpectator,
-        sessionToken: session?.roomCode === roomCode ? session.sessionToken : undefined,
+        sessionToken:
+          reconnect && session?.roomCode === roomCode?.toUpperCase()
+            ? session.sessionToken
+            : undefined,
       });
       saveSession(roomCode, res.playerId, res.sessionToken);
       dispatch({
