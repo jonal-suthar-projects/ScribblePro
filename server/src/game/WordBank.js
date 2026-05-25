@@ -1,34 +1,39 @@
-/** Word bank with difficulty tiers — server-side only (anti-cheat) */
+import { EASY_WORDS, MEDIUM_WORDS, HARD_WORDS } from './wordLists.js';
+
+/** Words that are poor for drawing or not family-friendly */
+const BLOCKLIST = new Set([
+  'gun', 'kill', 'bomb', 'death', 'war', 'blood', 'drug', 'hell', 'damn',
+  'sexy', 'nude', 'rape', 'suicide', 'terror', 'nazi', 'slave',
+]);
+
+function prepareWordList(words) {
+  const seen = new Set();
+  const result = [];
+
+  for (const raw of words) {
+    const word = String(raw).toLowerCase().trim();
+    if (word.length < 2 || word.length > 32) continue;
+    if (BLOCKLIST.has(word) || seen.has(word)) continue;
+    seen.add(word);
+    result.push(word);
+  }
+
+  return result;
+}
+
 const WORDS = {
-  easy: [
-    'cat', 'dog', 'sun', 'moon', 'tree', 'fish', 'bird', 'car', 'house', 'apple',
-    'book', 'ball', 'hat', 'shoe', 'cake', 'rain', 'snow', 'star', 'boat', 'cake',
-    'chair', 'door', 'egg', 'fire', 'gift', 'hand', 'ice', 'juice', 'key', 'lamp',
-    'milk', 'nose', 'owl', 'pen', 'queen', 'ring', 'ship', 'toy', 'umbrella', 'van',
-    'water', 'box', 'cloud', 'drum', 'eye', 'frog', 'grape', 'heart', 'island', 'jump',
-  ],
-  medium: [
-    'bicycle', 'castle', 'dinosaur', 'elephant', 'firefighter', 'guitar', 'helicopter',
-    'internet', 'jungle', 'kangaroo', 'lighthouse', 'mountain', 'notebook', 'octopus',
-    'piano', 'rainbow', 'sandwich', 'telescope', 'umbrella', 'volcano', 'waterfall',
-    'xylophone', 'yacht', 'zebra', 'astronaut', 'butterfly', 'crocodile', 'dragon',
-    'envelope', 'flashlight', 'giraffe', 'hamburger', 'igloo', 'jellyfish', 'knight',
-    'laptop', 'mermaid', 'ninja', 'ostrich', 'penguin', 'quilt', 'robot', 'skeleton',
-    'tornado', 'unicorn', 'vampire', 'wizard', 'x-ray', 'yogurt', 'zombie',
-  ],
-  hard: [
-    'archaeology', 'bureaucracy', 'choreography', 'democracy', 'encyclopedia',
-    'fluorescent', 'gymnastics', 'hippopotamus', 'improvisation', 'juxtaposition',
-    'kaleidoscope', 'labyrinth', 'metamorphosis', 'narcissistic', 'onomatopoeia',
-    'photosynthesis', 'quintessential', 'rhinoceros', 'sophisticated', 'tranquility',
-    'unprecedented', 'ventriloquist', 'whimsical', 'xenophobia', 'yesterday', 'zeppelin',
-    'abbreviation', 'benevolent', 'circumference', 'discombobulated', 'exaggerate',
-    'flabbergasted', 'grandiloquent', 'hallucination', 'idiosyncrasy', 'juggernaut',
-    'knowledgeable', 'lilliputian', 'magnanimous', 'nefarious', 'obfuscation',
-    'perspicacious', 'quizzical', 'recalcitrant', 'serendipity', 'triskaidekaphobia',
-    'unscrupulous', 'vicissitude', 'wanderlust', 'xenogenesis', 'yesteryear', 'zeitgeist',
-  ],
+  easy: prepareWordList(EASY_WORDS),
+  medium: prepareWordList(MEDIUM_WORDS),
+  hard: prepareWordList(HARD_WORDS),
 };
+
+console.log(
+  `[WordBank] Loaded ${WORDS.easy.length} easy, ${WORDS.medium.length} medium, ${WORDS.hard.length} hard words`
+);
+
+export function getWordCount(difficulty = 'medium') {
+  return (WORDS[difficulty] || WORDS.medium).length;
+}
 
 export function getRandomWords(count = 3, difficulty = 'medium') {
   const pool = [...(WORDS[difficulty] || WORDS.medium)];
