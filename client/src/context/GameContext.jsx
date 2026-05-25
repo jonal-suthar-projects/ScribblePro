@@ -187,7 +187,12 @@ export function GameProvider({ children }) {
 
     socket.on(SOCKET_EVENTS.TIMER_UPDATE, (timer) => {
       if (!shouldAcceptTimerUpdate(roomRef.current, timer)) return;
-      dispatch({ type: 'SET_TIMER', payload: timer });
+      let remaining = timer.remaining;
+      if (timer.endsAt != null && timer.serverTime != null) {
+        const drift = Date.now() - timer.serverTime;
+        remaining = Math.max(0, Math.ceil((timer.endsAt + drift - Date.now()) / 1000));
+      }
+      dispatch({ type: 'SET_TIMER', payload: { ...timer, remaining } });
     });
 
     socket.on(SOCKET_EVENTS.CHAT_MESSAGE, (msg) => {
@@ -393,6 +398,24 @@ export function GameProvider({ children }) {
       });
       if (res.strokes && !isFriendVoteRoom(res.room)) {
         dispatch({ type: 'SET_STROKES', payload: res.strokes });
+      }
+      if (res.timer?.endsAt != null) {
+        const drift = Date.now() - (res.timer.serverTime ?? Date.now());
+        const remaining = Math.max(
+          0,
+          Math.ceil((res.timer.endsAt + drift - Date.now()) / 1000)
+        );
+        dispatch({
+          type: 'SET_TIMER',
+          payload: {
+            remaining,
+            total: res.timer.totalSeconds ?? res.timer.total ?? 0,
+            type: res.timer.type,
+            gameType: res.room?.gameType,
+            endsAt: res.timer.endsAt,
+            serverTime: res.timer.serverTime,
+          },
+        });
       }
       return res;
     } catch (err) {

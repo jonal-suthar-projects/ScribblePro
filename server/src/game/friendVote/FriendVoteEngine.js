@@ -7,11 +7,12 @@ import {
 } from '../../constants/friendVote.js';
 import { GAME_PHASES } from '../../constants/game.js';
 import { SOCKET_EVENTS } from '../../constants/events.js';
-import { GameTimer } from '../Timer.js';
+import { AuthoritativeTimer } from '../../timers/AuthoritativeTimer.js';
 import { getRandomPrompt, clearPromptHistory } from './QuestionBank.js';
 import { assignAwards } from './AwardTitles.js';
 import { createPlayerId } from '../../utils/helpers.js';
 import { resolveGameType } from '../createEngine.js';
+import { logPhase } from '../../utils/logger.js';
 
 function sortLeaderboard(players) {
   return [...players]
@@ -30,15 +31,31 @@ function sortLeaderboard(players) {
  * Friend Vote Mode — server-authoritative Psych-style party game
  */
 export class FriendVoteEngine {
-  constructor(room, io) {
+  constructor(room, io, { stateManager } = {}) {
     this.room = room;
     this.io = io;
-    this.timer = new GameTimer(
+    this.stateManager = stateManager;
+    this.timer = new AuthoritativeTimer(
+      room,
+      room.code,
       (remaining, total) => this.broadcastTimer(remaining, total),
       () => this.onTimerComplete()
     );
     this.timerType = null;
     this.revealTimeouts = [];
+  }
+
+  async persist() {
+    if (this.stateManager) {
+      await this.stateManager.persistRoom(this.room);
+    }
+  }
+
+  setPhase(phase) {
+    const prev = this.room.phase;
+    this.room.phase = phase;
+    this.room.phaseStartTime = Date.now();
+    if (prev !== phase) logPhase(this.room.code, prev, phase);
   }
 
   get roomCode() {
@@ -63,13 +80,11 @@ export class FriendVoteEngine {
     }
   }
 
-  broadcastTimer(remaining, total) {
-    this.emitToRoom(SOCKET_EVENTS.TIMER_UPDATE, {
-      remaining,
-      total,
-      type: this.timerType,
-      gameType: GAME_TYPES.FRIEND_VOTE,
-    });
+  broadcastTimer() {
+    this.emitToRoom(
+      SOCKET_EVENTS.TIMER_UPDATE,
+      this.timer.getTimerPayload(GAME_TYPES.FRIEND_VOTE)
+    );
   }
 
   startGame() {
@@ -90,7 +105,7 @@ export class FriendVoteEngine {
     this.room.fvUsedTargetIds.clear();
     this.room.currentRound = 1;
     this.room.totalRounds = this.room.settings.rounds || FV_DEFAULT_SETTINGS.rounds;
-    this.room.phase = FV_PHASES.QUESTION_REVEAL;
+    this.setPhase(FV_PHASES.QUESTION_REVEAL);
 
     for (const p of this.room.players.values()) {
       p.score = 0;
@@ -104,6 +119,14 @@ export class FriendVoteEngine {
     });
 
     this.startRound();
+    return this.persist();
+  }
+
+  resumeAfterHydrate() {
+    if (this.timer.resumeFromPersistedState()) {
+      this.timerType = this.room.timer?.type;
+      this.broadcastTimer();
+    }
   }
 
   pickTarget() {
@@ -123,7 +146,7 @@ export class FriendVoteEngine {
     const target = this.pickTarget();
     this.room.fvTargetId = target.id;
     this.room.fvPrompt = getRandomPrompt(this.room.code, target.name);
-    this.room.phase = FV_PHASES.QUESTION_REVEAL;
+    this.setPhase(FV_PHASES.QUESTION_REVEAL);
 
     this.emitToRoom(SOCKET_EVENTS.FV_ROUND_START, {
       round: this.room.currentRound,
@@ -134,19 +157,24 @@ export class FriendVoteEngine {
     });
 
     this.timerType = 'question-reveal';
-    this.timer.start(this.room.settings.questionRevealTime || FV_DEFAULT_SETTINGS.questionRevealTime);
+    this.timer.start(
+      this.room.settings.questionRevealTime || FV_DEFAULT_SETTINGS.questionRevealTime,
+      'question-reveal'
+    );
     this.broadcastState();
+    return this.persist();
   }
 
-  beginAnswerSubmission() {
-    this.room.phase = FV_PHASES.ANSWER_SUBMISSION;
+  async beginAnswerSubmission() {
+    this.setPhase(FV_PHASES.ANSWER_SUBMISSION);
     this.timerType = 'answer';
-    this.timer.start(this.room.settings.answerTime || FV_DEFAULT_SETTINGS.answerTime);
+    this.timer.start(this.room.settings.answerTime || FV_DEFAULT_SETTINGS.answerTime, 'answer');
     this.emitToRoom(SOCKET_EVENTS.FV_PHASE_CHANGED, { phase: this.room.phase });
     this.broadcastState();
+    await this.persist();
   }
 
-  submitAnswer(playerId, text) {
+  async submitAnswer(playerId, text) {
     if (this.room.phase !== FV_PHASES.ANSWER_SUBMISSION) return { ok: false, error: 'Not accepting answers' };
     if (playerId === this.room.fvTargetId) return { ok: false, error: 'Target cannot submit an answer' };
     if (this.room.fvSubmittedIds.has(playerId)) return { ok: false, error: 'Already submitted' };
@@ -176,10 +204,12 @@ export class FriendVoteEngine {
 
     if (this.room.fvSubmittedIds.size >= required) {
       this.timer.stop();
-      setTimeout(() => this.beginVoting(), 800);
+      const t = setTimeout(() => this.beginVoting(), 800);
+      this.revealTimeouts.push(t);
     }
 
     this.broadcastState();
+    await this.persist();
     return { ok: true };
   }
 
@@ -188,29 +218,31 @@ export class FriendVoteEngine {
     return Math.max(2, active.length - 1);
   }
 
-  beginVoting() {
+  async beginVoting() {
     if (this.room.fvAnswers.size < 2) {
       this.emitToRoom(SOCKET_EVENTS.NOTIFICATION, {
         type: 'warning',
         message: 'Not enough answers — skipping round',
       });
-      setTimeout(() => this.showLeaderboard(), 2000);
+      const t = setTimeout(() => this.showLeaderboard(), 2000);
+      this.revealTimeouts.push(t);
       return;
     }
 
-    this.room.phase = FV_PHASES.VOTING_PHASE;
+    this.setPhase(FV_PHASES.VOTING_PHASE);
     this.room.fvVoteCounts = new Map();
     for (const a of this.room.fvAnswers.values()) {
       this.room.fvVoteCounts.set(a.id, 0);
     }
 
     this.timerType = 'vote';
-    this.timer.start(this.room.settings.voteTime || FV_DEFAULT_SETTINGS.voteTime);
+    this.timer.start(this.room.settings.voteTime || FV_DEFAULT_SETTINGS.voteTime, 'vote');
     this.emitToRoom(SOCKET_EVENTS.FV_PHASE_CHANGED, {
       phase: this.room.phase,
       answers: this.getAnonymousAnswers(),
     });
     this.broadcastState();
+    await this.persist();
   }
 
   getAnonymousAnswers() {
@@ -219,7 +251,7 @@ export class FriendVoteEngine {
       .sort(() => Math.random() - 0.5);
   }
 
-  castVote(voterId, answerId) {
+  async castVote(voterId, answerId) {
     if (this.room.phase !== FV_PHASES.VOTING_PHASE) return { ok: false, error: 'Not voting' };
     if (this.room.fvVotes.has(voterId)) return { ok: false, error: 'Already voted' };
 
@@ -243,15 +275,17 @@ export class FriendVoteEngine {
     const active = this.room.getActivePlayers();
     if (this.room.fvVotes.size >= active.length) {
       this.timer.stop();
-      setTimeout(() => this.beginResultReveal(), 600);
+      const t = setTimeout(() => this.beginResultReveal(), 600);
+      this.revealTimeouts.push(t);
     }
 
     this.broadcastState();
+    await this.persist();
     return { ok: true };
   }
 
-  beginResultReveal() {
-    this.room.phase = FV_PHASES.RESULT_REVEAL;
+  async beginResultReveal() {
+    this.setPhase(FV_PHASES.RESULT_REVEAL);
     this.timer.stop();
 
     let winnerId = null;
@@ -310,10 +344,11 @@ export class FriendVoteEngine {
     this.revealTimeouts.push(
       setTimeout(() => this.showLeaderboard(), revealTime * 1000)
     );
+    await this.persist();
   }
 
-  showLeaderboard() {
-    this.room.phase = FV_PHASES.LEADERBOARD;
+  async showLeaderboard() {
+    this.setPhase(FV_PHASES.LEADERBOARD);
     const leaderboard = sortLeaderboard([...this.room.players.values()]);
 
     this.emitToRoom(SOCKET_EVENTS.FV_LEADERBOARD, {
@@ -322,8 +357,12 @@ export class FriendVoteEngine {
     });
 
     this.timerType = 'leaderboard';
-    this.timer.start(this.room.settings.leaderboardTime || FV_DEFAULT_SETTINGS.leaderboardTime);
+    this.timer.start(
+      this.room.settings.leaderboardTime || FV_DEFAULT_SETTINGS.leaderboardTime,
+      'leaderboard'
+    );
     this.broadcastState();
+    await this.persist();
   }
 
   onTimerComplete() {
@@ -354,8 +393,8 @@ export class FriendVoteEngine {
     this.startRound();
   }
 
-  endGame() {
-    this.room.phase = FV_PHASES.GAME_END;
+  async endGame() {
+    this.setPhase(FV_PHASES.GAME_END);
     this.timer.stop();
     const players = [...this.room.players.values()].filter((p) => !p.isSpectator);
     const leaderboard = sortLeaderboard(players);
@@ -368,19 +407,21 @@ export class FriendVoteEngine {
       awards,
     });
     this.broadcastState();
+    return this.persist();
   }
 
-  returnToLobby() {
+  async returnToLobby() {
     this.clearTimeouts();
     this.timer.stop();
     this.room.resetScribbleState();
     this.room.resetFriendVoteState();
-    this.room.phase = GAME_PHASES.LOBBY;
+    this.setPhase(GAME_PHASES.LOBBY);
     for (const p of this.room.players.values()) {
       p.isReady = false;
       p.score = 0;
     }
     this.broadcastState();
+    await this.persist();
   }
 
   clearTimeouts() {

@@ -14,11 +14,11 @@ export function resolveGameType(settingsOrRoom) {
   return GAME_TYPES.SCRIBBLE;
 }
 
-export function createEngine(room, io) {
+export function createEngine(room, io, options = {}) {
   if (resolveGameType(room) === GAME_TYPES.FRIEND_VOTE) {
-    return new FriendVoteEngine(room, io);
+    return new FriendVoteEngine(room, io, options);
   }
-  return new GameEngine(room, io);
+  return new GameEngine(room, io, options);
 }
 
 export function isFriendVoteEngine(engine) {

@@ -33,19 +33,34 @@ All transitions happen in `GameEngine.js`. Clients display state; they never adv
 3. Server rebinds `socketId` to existing player
 4. Server sends full room state + stroke history
 
+## Redis-backed state (production)
+
+Room snapshots and player sessions are stored in Redis (`REDIS_URL`, Upstash-compatible `rediss://` URL).
+
+| Key | Purpose |
+|-----|---------|
+| `room:{CODE}` | Serialized room state (phase, scores, timers, FV data) |
+| `rooms:active:{CODE}` | Index for hydration on deploy |
+| `session:{token}` | Reconnect mapping → room + playerId |
+
+In-memory maps on the server hold **live** `Room` instances and `socketId` routing only. Game engines (timers/intervals) are per-process and resume from persisted `room.timer.endsAt` after restart.
+
+### Transition pipeline
+
+```
+Socket event → GameStateManager.withRoom (per-room lock)
+  → validate phase/player → engine mutates room
+  → bump version → RoomStore.saveRoom → broadcast
+```
+
+### Timers
+
+`AuthoritativeTimer` stores `startedAt` / `endsAt` on the room. Clients receive `endsAt` + `serverTime` and compute remaining time locally to reduce desync.
+
 ## Scaling Path
 
 | Phase | Change |
 |-------|--------|
-| MVP | In-memory `RoomManager` |
-| 100+ concurrent rooms | Redis for room state |
-| Multi-server | `@socket.io/redis-adapter` |
-| Persistence | PostgreSQL + Prisma |
-| Analytics | Event queue (Kafka/SQS) |
-
-## Adding a Database Later
-
-1. Add Prisma schema: `User`, `Room`, `GameSession`, `PlayerStats`
-2. Replace `RoomManager.rooms` Map with Redis cache + DB persistence
-3. Store `sessionToken` → `userId` mapping
-4. Persist chat history and leaderboards post-game
+| Current | Redis room state + single Render instance |
+| Multi-server | `@socket.io/redis-adapter` + shared Redis |
+| Long-term persistence | PostgreSQL for profiles/stats (optional) |

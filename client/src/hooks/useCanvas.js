@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { throttle } from '../utils/helpers.js';
 import { floodFillCanvas } from '../utils/floodFill.js';
+import { normalizeStroke, strokeToPixels } from '../utils/canvasCoords.js';
 
 const CANVAS_BG = '#ffffff';
 
@@ -38,23 +39,27 @@ export function useCanvas({
   }, []);
 
   const drawStroke = useCallback((ctx, stroke) => {
-    if (stroke.type === 'fill') {
+    const w = sizeRef.current.w;
+    const h = sizeRef.current.h;
+    if (!w || !h) return;
+
+    const local = strokeToPixels(stroke, w, h);
+
+    if (local.type === 'fill') {
       const canvas = canvasRef.current;
-      const w = sizeRef.current.w;
-      const h = sizeRef.current.h;
-      if (!canvas || !w || !h) return;
-      floodFillCanvas(canvas, stroke.x * w, stroke.y * h, stroke.color);
+      if (!canvas) return;
+      floodFillCanvas(canvas, local.x, local.y, local.color);
       return;
     }
 
-    if (!stroke?.points?.length) return;
+    if (!local?.points?.length) return;
     ctx.beginPath();
-    ctx.strokeStyle = stroke.isEraser ? CANVAS_BG : stroke.color;
-    ctx.lineWidth = stroke.size;
+    ctx.strokeStyle = local.isEraser ? CANVAS_BG : local.color;
+    ctx.lineWidth = local.size;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
-    const pts = stroke.points;
+    ctx.globalCompositeOperation = local.isEraser ? 'destination-out' : 'source-over';
+    const pts = local.points;
     ctx.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) {
       const midX = (pts[i - 1].x + pts[i].x) / 2;
@@ -123,7 +128,9 @@ export function useCanvas({
 
   const emitDraw = useRef(
     throttle((stroke) => {
-      onDraw?.(stroke);
+      const w = sizeRef.current.w;
+      const h = sizeRef.current.h;
+      onDraw?.(normalizeStroke(stroke, w, h));
     }, 16)
   ).current;
 
@@ -132,13 +139,17 @@ export function useCanvas({
     const h = sizeRef.current.h;
     if (!w || !h) return;
 
-    const stroke = {
-      id: `fill-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      type: 'fill',
-      color,
-      x: pos.x / w,
-      y: pos.y / h,
-    };
+    const stroke = normalizeStroke(
+      {
+        id: `fill-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        type: 'fill',
+        color,
+        x: pos.x / w,
+        y: pos.y / h,
+      },
+      w,
+      h
+    );
 
     const canvas = canvasRef.current;
     if (canvas) floodFillCanvas(canvas, pos.x, pos.y, color);
@@ -177,7 +188,9 @@ export function useCanvas({
     stroke.points.push(pos);
     const ctx = getCtx();
     if (ctx) drawStroke(ctx, stroke);
-    emitDraw({ ...stroke, points: [...stroke.points] });
+    const w = sizeRef.current.w;
+    const h = sizeRef.current.h;
+    emitDraw(normalizeStroke({ ...stroke, points: [...stroke.points] }, w, h));
   };
 
   const endDraw = () => {
@@ -185,7 +198,11 @@ export function useCanvas({
     drawingRef.current = false;
     const stroke = currentStrokeRef.current;
     if (stroke && stroke.points.length > 0) {
-      onDraw?.({ ...stroke, points: [...stroke.points], final: true });
+      const w = sizeRef.current.w;
+      const h = sizeRef.current.h;
+      onDraw?.(
+        normalizeStroke({ ...stroke, points: [...stroke.points], final: true }, w, h)
+      );
     }
     currentStrokeRef.current = null;
   };

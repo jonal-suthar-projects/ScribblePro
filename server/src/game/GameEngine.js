@@ -8,22 +8,38 @@ import {
   calculateDrawerScore,
   sortLeaderboard,
 } from './Scoring.js';
-import { GameTimer } from './Timer.js';
-import { pickRandomDrawer } from '../utils/helpers.js';
+import { AuthoritativeTimer } from '../timers/AuthoritativeTimer.js';
+import { logPhase } from '../utils/logger.js';
 
 /**
  * Core game loop — all state transitions and scoring happen here (server-authoritative)
  */
 export class GameEngine {
-  constructor(room, io, namespace) {
+  constructor(room, io, { stateManager } = {}) {
     this.room = room;
     this.io = io;
-    this.namespace = namespace;
-    this.timer = new GameTimer(
+    this.stateManager = stateManager;
+    this.timer = new AuthoritativeTimer(
+      room,
+      room.code,
       (remaining, total) => this.broadcastTimer(remaining, total),
       () => this.onTimerComplete()
     );
     this.timerType = null;
+    this.pendingTimeouts = [];
+  }
+
+  async persist() {
+    if (this.stateManager) {
+      await this.stateManager.persistRoom(this.room);
+    }
+  }
+
+  setPhase(phase) {
+    const prev = this.room.phase;
+    this.room.phase = phase;
+    this.room.phaseStartTime = Date.now();
+    if (prev !== phase) logPhase(this.room.code, prev, phase);
   }
 
   get roomCode() {
@@ -49,12 +65,10 @@ export class GameEngine {
   }
 
   broadcastTimer(remaining, total) {
-    this.emitToRoom(SOCKET_EVENTS.TIMER_UPDATE, {
-      remaining,
-      total,
-      type: this.timerType,
-      gameType: GAME_TYPES.SCRIBBLE,
-    });
+    this.emitToRoom(
+      SOCKET_EVENTS.TIMER_UPDATE,
+      this.timer.getTimerPayload(GAME_TYPES.SCRIBBLE)
+    );
   }
 
   startGame() {
@@ -75,6 +89,7 @@ export class GameEngine {
       totalRounds: this.room.totalRounds,
     });
     this.startRound();
+    return this.persist();
   }
 
   startRound() {
@@ -106,7 +121,7 @@ export class GameEngine {
     this.room.strokes = [];
     this.room.strokeHistory = [];
     this.room.turnEnded = false;
-    this.room.phase = GAME_PHASES.WORD_SELECT;
+    this.setPhase(GAME_PHASES.WORD_SELECT);
 
     const choices = getRandomWords(3, this.room.settings.difficulty);
     this.room.wordChoices = choices;
@@ -124,18 +139,20 @@ export class GameEngine {
     });
 
     this.timerType = 'word-select';
-    this.timer.start(this.room.settings.wordSelectTime || 15);
+    this.timer.start(this.room.settings.wordSelectTime || 15, 'word-select');
     this.broadcastState();
+    return this.persist();
   }
 
-  selectWord(playerId, word) {
+  async selectWord(playerId, word) {
     if (playerId !== this.room.currentDrawerId) return false;
+    if (this.room.phase !== GAME_PHASES.WORD_SELECT) return false;
     if (!this.room.wordChoices.includes(word)) {
       word = this.room.wordChoices[0];
     }
     this.timer.stop();
     this.room.currentWord = word;
-    this.room.phase = GAME_PHASES.DRAWING;
+    this.setPhase(GAME_PHASES.DRAWING);
     this.room.hintRevealCount = 0;
 
     this.emitToRoom(SOCKET_EVENTS.WORD_SELECTED, {
@@ -151,19 +168,22 @@ export class GameEngine {
     );
 
     this.timerType = 'draw';
-    this.timer.start(this.room.settings.drawTime || 80);
+    this.timer.start(this.room.settings.drawTime || 80, 'draw');
 
-    // Progressive hints every 25% of time
     const drawTime = this.room.settings.drawTime || 80;
-    this.hintInterval = setInterval(() => {
+    const hintDelay = Math.floor((drawTime * 1000) / 4);
+    const hintTimer = setInterval(() => {
       if (this.room.phase === GAME_PHASES.DRAWING && !this.room.turnEnded) {
         this.room.hintRevealCount += 1;
-        // Must use per-player broadcast — toPublicState() without id sets isDrawer=false for all
         this.broadcastState();
+        this.persist();
       }
-    }, Math.floor((drawTime * 1000) / 4));
+    }, hintDelay);
+    this.hintInterval = hintTimer;
+    this.pendingTimeouts.push(hintTimer);
 
     this.broadcastState();
+    await this.persist();
     return true;
   }
 
@@ -193,10 +213,7 @@ export class GameEngine {
   }
 
   onTimerComplete() {
-    if (this.hintInterval) {
-      clearInterval(this.hintInterval);
-      this.hintInterval = null;
-    }
+    this.clearHintInterval();
     if (this.room.phase === GAME_PHASES.WORD_SELECT) {
       const word = this.room.wordChoices[0];
       if (word) this.selectWord(this.room.currentDrawerId, word);
@@ -206,14 +223,18 @@ export class GameEngine {
     }
   }
 
-  endTurn() {
-    if (this.room.turnEnded) return;
-    this.room.turnEnded = true;
-    this.timer.stop();
+  clearHintInterval() {
     if (this.hintInterval) {
       clearInterval(this.hintInterval);
       this.hintInterval = null;
     }
+  }
+
+  async endTurn() {
+    if (this.room.turnEnded) return;
+    this.room.turnEnded = true;
+    this.timer.stop();
+    this.clearHintInterval();
 
     const drawer = this.room.getPlayerById(this.room.currentDrawerId);
     const drawerBonus = calculateDrawerScore(this.room.guessedPlayerIds.size);
@@ -225,11 +246,13 @@ export class GameEngine {
       scores: this.getScores(),
     });
 
-    setTimeout(() => this.selectNextDrawer(), 3000);
+    const t = setTimeout(() => this.selectNextDrawer(), 3000);
+    this.pendingTimeouts.push(t);
+    await this.persist();
   }
 
-  endRound() {
-    this.room.phase = GAME_PHASES.ROUND_END;
+  async endRound() {
+    this.setPhase(GAME_PHASES.ROUND_END);
     this.timer.stop();
     const leaderboard = sortLeaderboard([...this.room.players.values()]);
 
@@ -240,17 +263,20 @@ export class GameEngine {
     });
 
     if (this.room.currentRound >= this.room.totalRounds) {
-      setTimeout(() => this.endGame(), 5000);
+      const t = setTimeout(() => this.endGame(), 5000);
+      this.pendingTimeouts.push(t);
     } else {
       this.room.currentRound += 1;
       this.room.usedDrawerIds.clear();
-      setTimeout(() => this.startRound(), 5000);
+      const t = setTimeout(() => this.startRound(), 5000);
+      this.pendingTimeouts.push(t);
     }
     this.broadcastState();
+    await this.persist();
   }
 
-  endGame() {
-    this.room.phase = GAME_PHASES.GAME_END;
+  async endGame() {
+    this.setPhase(GAME_PHASES.GAME_END);
     const leaderboard = sortLeaderboard([...this.room.players.values()]);
     const winner = leaderboard[0];
 
@@ -259,9 +285,17 @@ export class GameEngine {
       winner,
     });
     this.broadcastState();
+    return this.persist();
   }
 
-  handleGuess(playerId, guess) {
+  resumeAfterHydrate() {
+    if (this.timer.resumeFromPersistedState()) {
+      this.timerType = this.room.timer?.type;
+      this.broadcastTimer(this.timer.getRemaining(), this.room.timer?.totalSeconds);
+    }
+  }
+
+  async handleGuess(playerId, guess) {
     const player = this.room.getPlayerById(playerId);
     if (!player || player.isSpectator) return null;
     if (playerId === this.room.currentDrawerId) return null;
@@ -297,9 +331,11 @@ export class GameEngine {
       const active = this.room.getActivePlayers();
       const guessers = active.length - 1;
       if (this.room.guessedPlayerIds.size >= guessers) {
-        setTimeout(() => this.endTurn(), 1500);
+        const t = setTimeout(() => this.endTurn(), 1500);
+        this.pendingTimeouts.push(t);
       }
       this.broadcastState();
+      await this.persist();
       return { correct: true, points };
     }
 
@@ -336,6 +372,7 @@ export class GameEngine {
     }
     this.room.strokeHistory = this.room.strokeHistory.filter((s) => s.id !== stroke.id);
     this.room.strokeHistory.push(stroke);
+    this.persist();
     return true;
   }
 
@@ -393,6 +430,11 @@ export class GameEngine {
 
   destroy() {
     this.timer.stop();
-    if (this.hintInterval) clearInterval(this.hintInterval);
+    this.clearHintInterval();
+    for (const t of this.pendingTimeouts) {
+      clearTimeout(t);
+      clearInterval(t);
+    }
+    this.pendingTimeouts = [];
   }
 }

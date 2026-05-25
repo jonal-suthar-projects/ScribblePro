@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useCanvas } from '../../hooks/useCanvas.js';
 import { useGame } from '../../context/GameContext.jsx';
 import { DrawingToolbar } from './DrawingToolbar.jsx';
+import { CANVAS_ASPECT } from '../../utils/canvasCoords.js';
 
 export function DrawingCanvas({ compact = false, fillHeight = false }) {
   const { isDrawer, sendDraw, strokes, clearCanvas, undoStroke } = useGame();
@@ -68,12 +69,16 @@ export function DrawingCanvas({ compact = false, fillHeight = false }) {
         />
       )}
       <div
-        className={`relative flex-1 rounded-xl overflow-hidden border border-white/20 bg-white min-h-0
-          ${fillHeight ? 'min-h-[200px]' : 'min-h-[200px] lg:min-h-[400px]'}`}
+        className={`relative w-full mx-auto rounded-xl overflow-hidden border border-white/20 bg-white
+          ${fillHeight ? 'flex-1 min-h-0 max-h-full flex items-center justify-center' : 'flex-1 min-h-0'}`}
       >
+        <div
+          className="relative w-full max-h-full min-h-0 touch-none select-none"
+          style={{ aspectRatio: CANVAS_ASPECT }}
+        >
         <canvas
           ref={canvasRef}
-          className="absolute inset-0 touch-none select-none"
+          className="absolute inset-0 w-full h-full touch-none select-none"
           style={{
             cursor: isDrawer ? (isFillMode ? 'cell' : 'crosshair') : 'default',
             touchAction: 'none',
@@ -101,6 +106,7 @@ export function DrawingCanvas({ compact = false, fillHeight = false }) {
             </span>
           </div>
         )}
+        </div>
       </div>
     </div>
   );

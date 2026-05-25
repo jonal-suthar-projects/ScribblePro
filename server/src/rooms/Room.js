@@ -21,8 +21,15 @@ export class Room {
     this.players = new Map();
     this.spectators = new Map();
     this.createdAt = Date.now();
+    this.lastActivityAt = Date.now();
     this.isPrivate = settings.privateRoom !== false;
     this.isPublic = !this.isPrivate;
+
+    // Authoritative metadata (persisted to Redis)
+    this.timer = null;
+    this.phaseStartTime = null;
+    this.stateVersion = 0;
+    this.processedActionIds = new Set();
 
     // Game state
     this.currentRound = 0;

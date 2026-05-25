@@ -161,7 +161,7 @@ export function Game() {
               </div>
             ) : (
               <div className="flex-1 min-h-0 flex flex-col gap-2" role="tabpanel">
-                <div className="flex-[1.1] min-h-[38%] max-h-[50%] flex flex-col">
+                <div className="flex-1 min-h-[180px] flex flex-col">
                   {canvasBlock}
                 </div>
                 <div className="flex-1 min-h-[130px] flex flex-col border-t border-white/10 pt-2">

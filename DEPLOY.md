@@ -9,6 +9,9 @@ Stack: **Cloudflare Pages** (frontend) + **Render** (backend + Socket.IO).
 | `VITE_SOCKET_URL` | Cloudflare Pages (build) | `https://scribblepro-api.onrender.com` |
 | `CLIENT_URL` | Render (runtime) | `https://scribblepro.pages.dev` |
 | `CLIENT_URLS` | Render (optional) | `https://preview.pages.dev` |
+| `REDIS_URL` | Render (recommended) | Upstash **Redis URL** (`rediss://…`) |
+
+`REDIS_URL` keeps rooms and sessions alive across Render restarts and enables reliable reconnects. Without it, the server falls back to in-memory state (fine for local dev only).
 
 No trailing slashes. After changing `VITE_SOCKET_URL`, redeploy the frontend.
 

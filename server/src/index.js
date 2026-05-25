@@ -3,17 +3,30 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { Server } from 'socket.io';
 import { RoomManager } from './rooms/RoomManager.js';
+import { RoomStore } from './state/roomStore.js';
+import { SessionStore } from './state/sessionStore.js';
+import { GameStateManager } from './transitions/GameStateManager.js';
 import { registerSocketHandlers } from './sockets/handlers.js';
 import { getAllowedOrigins, isOriginAllowed } from './config/corsOrigins.js';
+import { getRedisClient, isRedisEnabled, closeRedis } from './services/redis.js';
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const HOST = process.env.HOST || '0.0.0.0';
 const allowedOrigins = getAllowedOrigins();
 const isProduction = process.env.NODE_ENV === 'production';
 
+const roomStore = new RoomStore();
+const sessionStore = new SessionStore();
+const roomManager = new RoomManager(
+  parseInt(process.env.MAX_ROOMS || '500', 10),
+  roomStore,
+  sessionStore
+);
+const stateManager = new GameStateManager(roomManager, roomStore, sessionStore);
+
 const fastify = Fastify({
   logger: true,
-  trustProxy: true, 
+  trustProxy: true,
 });
 
 await fastify.register(cors, {
@@ -27,13 +40,27 @@ await fastify.register(cors, {
   credentials: true,
 });
 
-const roomManager = new RoomManager(
-  parseInt(process.env.MAX_ROOMS || '500', 10)
-);
+if (isRedisEnabled()) {
+  try {
+    await getRedisClient();
+  } catch (err) {
+    console.error('[Startup] Redis unavailable:', err.message);
+  }
+} else {
+  console.warn(
+    '[Startup] REDIS_URL not set — room state is in-memory only (lost on restart).'
+  );
+}
+
+const hydrated = await roomManager.hydrateFromStore();
+if (hydrated > 0) {
+  console.log(`[Startup] Hydrated ${hydrated} room(s) from store`);
+}
 
 fastify.get('/health', async () => ({
   status: 'ok',
   rooms: roomManager.rooms.size,
+  redis: isRedisEnabled(),
   uptime: process.uptime(),
 }));
 
@@ -43,7 +70,7 @@ fastify.get('/api/rooms/public', async () => ({
 
 fastify.get('/api/rooms/:code', async (request) => {
   const code = request.params.code?.toUpperCase()?.trim();
-  const room = roomManager.getRoom(code);
+  const room = await roomManager.getOrLoadRoom(code);
   if (!room) {
     return { exists: false };
   }
@@ -78,7 +105,35 @@ const io = new Server(fastify.server, {
   maxHttpBufferSize: 1e6,
 });
 
-registerSocketHandlers(io, roomManager);
+const engineRegistry = registerSocketHandlers(io, roomManager, stateManager);
+
+// Resume timers for hydrated active games
+for (const room of roomManager.rooms.values()) {
+  if (room.phase !== 'lobby' && room.timer?.endsAt) {
+    const engine = engineRegistry.get(room, io);
+    engine.resumeAfterHydrate?.();
+  }
+}
+
+const EXPIRE_INTERVAL_MS = parseInt(process.env.ROOM_EXPIRE_INTERVAL_MS || '300000', 10);
+setInterval(async () => {
+  try {
+    await roomStore.expireInactiveRooms();
+  } catch (err) {
+    console.error('[RoomStore] Expire job failed:', err.message);
+  }
+}, EXPIRE_INTERVAL_MS);
+
+const shutdown = async () => {
+  for (const room of roomManager.rooms.values()) {
+    await roomStore.saveRoom(room);
+  }
+  await closeRedis();
+  process.exit(0);
+};
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 if (isProduction && !process.env.CLIENT_URL) {
   console.warn(
@@ -91,11 +146,14 @@ if (!isProduction) {
   ╔══════════════════════════════════════╗
   ║   ScribblePro Server Running         ║
   ║   Port: ${PORT}                            ║
+  ║   Redis: ${isRedisEnabled() ? 'enabled' : 'disabled (memory)'}           ║
   ║   CORS: ${allowedOrigins.join(', ')}  ║
   ╚══════════════════════════════════════╝
 `);
 } else {
-  console.log(`ScribblePro server listening on port ${PORT}`);
+  console.log(
+    `ScribblePro server listening on port ${PORT} (redis=${isRedisEnabled()})`
+  );
 }
 
-export { fastify, io, roomManager };
+export { fastify, io, roomManager, stateManager };
